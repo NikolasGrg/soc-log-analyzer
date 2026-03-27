@@ -21,13 +21,13 @@ This project simulates how a SOC analyst processes logs to identify potential se
 
 ---
 
-##  SOC Use Case
+## SOC Use Case
 
 This tool mimics initial alert triage performed in a SIEM environment (e.g. FortiSIEM, Splunk), helping analysts quickly identify potential threats.
 
 ---
 
-##  Usage
+## Usage
 
 ```bash
 python log_analyzer.py
