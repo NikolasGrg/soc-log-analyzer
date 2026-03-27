@@ -31,3 +31,10 @@ This tool mimics initial alert triage performed in a SIEM environment (e.g. Fort
 
 ```bash
 python log_analyzer.py
+
+---
+
+## Author
+
+Nikolas Georgopoulos  
+SOC Analyst | CySA+
