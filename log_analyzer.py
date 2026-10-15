@@ -1,3 +1,6 @@
+import argparse
+import csv
+import json
 import re
 from pathlib import Path
 
@@ -50,21 +53,80 @@ def analyze_logs(file):
     return findings
 
 
-if __name__ == "__main__":
-    sample_file = Path(__file__).resolve().with_name("sample_logs.txt")
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze log messages using explicit detection rules."
+    )
+    parser.add_argument(
+        "input",
+        nargs="?",
+        type=Path,
+        default=Path(__file__).resolve().with_name("sample_logs.txt"),
+        help="Path to a UTF-8 text log file",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json", "csv"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Save findings to a file",
+    )
+    args = parser.parse_args()
+
+    if args.output and args.input.resolve() == args.output.resolve():
+        parser.error("Input and output must be different files.")
 
     try:
-        results = analyze_logs(sample_file)
+        findings = analyze_logs(args.input)
+
+        if args.format == "json":
+            output = json.dumps(
+                {"schema_version": 1, "findings": findings},
+                indent=2,
+                ensure_ascii=False,
+            ) + "\n"
+
+        elif args.format == "csv":
+            import io
+
+            buffer = io.StringIO(newline="")
+            fields = [
+                "line", "rule_id", "severity",
+                "category", "evidence", "message",
+            ]
+            writer = csv.DictWriter(buffer, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(findings)
+            output = buffer.getvalue()
+
+        else:
+            lines = ["=== Log Analysis Findings ==="]
+
+            for finding in findings:
+                lines.append(
+                    f"[{finding['severity']}] "
+                    f"({finding['category']}) "
+                    f"line={finding['line']}: {finding['message']}"
+                )
+
+            lines.append(f"\nTotal findings: {len(findings)}")
+            output = "\n".join(lines) + "\n"
+
+        if args.output:
+            with args.output.open(
+                "w", encoding="utf-8", newline=""
+            ) as output_file:
+                output_file.write(output)
+        else:
+            print(output, end="")
+
     except (OSError, UnicodeError) as error:
-        raise SystemExit(f"Could not read log file: {error}")
+        parser.exit(2, f"Error: {error}\n")
 
-    print("=== Log Analysis Findings ===")
 
-    for finding in results:
-        print(
-            f"[{finding['severity']}] "
-            f"({finding['category']}) "
-            f"line={finding['line']}: {finding['message']}"
-        )
-
-    print(f"\nTotal findings: {len(results)}")
+if __name__ == "__main__":
+    main()
