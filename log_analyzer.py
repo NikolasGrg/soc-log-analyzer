@@ -26,29 +26,64 @@ RULES = [
 ]
 
 
-def analyze_logs(file):
-    """Return findings for log messages matching the detection rules."""
+def analyze_logs(file, input_format="text"):
+    """Analyze text or JSONL logs and return explainable findings."""
+    if input_format not in ("text", "jsonl"):
+        raise ValueError("Input format must be text or jsonl.")
+
     findings = []
+    context_fields = ("timestamp", "host", "user", "source_ip")
 
     with open(file, "r", encoding="utf-8") as log_file:
         for line_number, line in enumerate(log_file, start=1):
-            message = line.strip()
-
-            if not message:
+            if not line.strip():
                 continue
+
+            if input_format == "jsonl":
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError as error:
+                    raise ValueError(
+                        f"Line {line_number}: invalid JSON."
+                    ) from error
+
+                if not isinstance(event, dict):
+                    raise ValueError(
+                        f"Line {line_number}: expected a JSON object."
+                    )
+
+                if not isinstance(event.get("message"), str):
+                    raise ValueError(
+                        f"Line {line_number}: message must be a string."
+                    )
+
+                for field in context_fields:
+                    if field in event and not isinstance(event[field], str):
+                        raise ValueError(
+                            f"Line {line_number}: {field} must be a string."
+                        )
+            else:
+                event = {"message": line.strip()}
+
+            message = event["message"]
 
             for rule in RULES:
                 match = rule["pattern"].search(message)
 
                 if match:
-                    findings.append({
+                    finding = {
                         "line": line_number,
                         "rule_id": rule["id"],
                         "severity": rule["severity"],
                         "category": rule["category"],
                         "evidence": match.group(),
                         "message": message,
-                    })
+                    }
+
+                    for field in context_fields:
+                        finding[field] = event.get(field, "")
+
+                    findings.append(finding)
 
     return findings
 
@@ -75,13 +110,19 @@ def main():
         type=Path,
         help="Save findings to a file",
     )
+        parser.add_argument(
+        "--input-format",
+        choices=["text", "jsonl"],
+        default="text",
+        help="Input format (default: text)",
+    )
     args = parser.parse_args()
 
     if args.output and args.input.resolve() == args.output.resolve():
         parser.error("Input and output must be different files.")
 
     try:
-        findings = analyze_logs(args.input)
+     findings = analyze_logs(args.input, args.input_format)
 
         if args.format == "json":
             output = json.dumps(
@@ -96,7 +137,7 @@ def main():
             buffer = io.StringIO(newline="")
             fields = [
                 "line", "rule_id", "severity",
-                "category", "evidence", "message",
+                "category", "evidence", "message", "timestamp", "host", "user", "source_ip",
             ]
             writer = csv.DictWriter(buffer, fieldnames=fields)
             writer.writeheader()
@@ -124,7 +165,7 @@ def main():
         else:
             print(output, end="")
 
-    except (OSError, UnicodeError) as error:
+    except (OSError, UnicodeError, ValueError) as error:
         parser.exit(2, f"Error: {error}\n")
 
 
